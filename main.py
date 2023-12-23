@@ -111,6 +111,7 @@ def perform_eda(stock_data, stock_name):
     else:
         st.warning("Data is not a DataFrame.")
 
+
 # Main Streamlit app
 def main():
     st.title("Stock Grouping, Correlation, and EDA Analysis")
@@ -143,31 +144,28 @@ def main():
                 selected_stock = stock_data.columns[selected_stock_index]
                 selected_stocks_analysis.append(selected_stock)
 
-            # Display the selected stocks for analysis
-            st.write("Selected Stocks for Analysis:", selected_stocks_analysis)
+        # Display the selected stocks for analysis
+        st.write("Selected Stocks for Analysis:", selected_stocks_analysis)
 
-            # Perform EDA for each selected stock
-            for selected_stock_name in selected_stocks_analysis:
-                selected_stock_data = stock_data[[selected_stock_name]]  # Ensure the correct data type (DataFrame)
-                if isinstance(selected_stock_data, pd.DataFrame):
-                    perform_eda(selected_stock_data, selected_stock_name)
-                else:
-                    st.warning(f"Data for {selected_stock_name} is not a DataFrame. Cannot perform EDA.")
+        # Perform EDA for each selected stock
+        for selected_stock_name in selected_stocks_analysis:
+            selected_stock_data = stock_data[[selected_stock_name]]  # Ensure the correct data type (DataFrame)
+            if isinstance(selected_stock_data, pd.DataFrame):
+                perform_eda(selected_stock_data, selected_stock_name)
 
-            # Calculate and present correlation
-            top_positive_corr, top_negative_corr = calculate_and_present_correlation(
-                stock_data[selected_stocks_analysis])
+        # Calculate and present correlation
+        top_positive_corr, top_negative_corr = calculate_and_present_correlation(
+            stock_data[selected_stocks_analysis])
 
-            # Display top positive correlations
-            st.write("Top 10 Positive Correlations:")
-            st.write(top_positive_corr)
+        # Display top positive correlations
+        st.write("Top 10 Positive Correlations:")
+        st.write(top_positive_corr)
 
-            # Display top negative correlations
-            st.write("Top 10 Negative Correlations:")
-            st.write(top_negative_corr)
+        # Display top negative correlations
+        st.write("Top 10 Negative Correlations:")
+        st.write(top_negative_corr)
     else:
         st.error("Error: Empty dataset after clustering.")
-
 
 if __name__ == '__main__':
     main()
