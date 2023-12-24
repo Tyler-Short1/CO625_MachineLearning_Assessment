@@ -9,7 +9,7 @@ import seaborn as sns
 
 
 # Function to fetch historical stock data for NASDAQ-100 companies
-def get_nasdaq_100_data():
+def get_nasdaq_100_data(selected_column='Adj Close'):
     nasdaq_100_symbols = ["AAPL", "MSFT", "AMZN", "AVGO", "META",
                           "TSLA", "NVDA", "GOOGL", "GOOG", "COST",
                           "ADBE", "PEP", "AMD", "NFLX", "CSCO",
@@ -34,7 +34,15 @@ def get_nasdaq_100_data():
                           ]
 
     stock_data = yf.download(nasdaq_100_symbols, start="2022-12-01", end="2023-12-01")
-    return stock_data['Adj Close'].pct_change().dropna()
+
+    # Check if the selected column is in the available columns
+    if selected_column in stock_data.columns.get_level_values(0):
+        return stock_data[selected_column].pct_change().dropna()
+    else:
+        raise ValueError(
+            f"Invalid column selected: {selected_column}. Available columns are {stock_data.columns.get_level_values(0)}")
+
+    #return stock_data['High'].pct_change().dropna()
 
 
 # Function to perform clustering
@@ -78,46 +86,36 @@ def calculate_and_present_correlation(stock_data):
 
 
 # Function to perform EDA for each selected stock
-def perform_eda(stock_data, stock_name):
-    st.write(f"Exploratory Data Analysis for {stock_name}")
+def perform_eda(stock_data, selected_stock_name, selected_column):
+    st.write(f"Exploratory Data Analysis for {selected_stock_name} using {selected_column}")
 
     # Visualize temporal structure
     st.write("Temporal Structure:")
-    st.line_chart(stock_data)
+    st.line_chart(stock_data[selected_stock_name])  # Use the selected_stock_name for the line chart
 
     # Visualize distribution with a histogram
     st.write("Distribution Analysis:")
     fig, ax = plt.subplots()
-    ax.hist(stock_data, bins=30, alpha=0.7)
+    ax.hist(stock_data[selected_stock_name], bins=30, alpha=0.7)  # Use the selected_stock_name for the histogram
     ax.set_xlabel("Value")
     ax.set_ylabel("Frequency")
     st.pyplot(fig)
 
     # Changes in Distribution Over Intervals
-    st.write("Changes in Distribution Over Intervals:")
-
-    # Check if data is a DataFrame before trying to access columns
-    if isinstance(stock_data, pd.DataFrame):
-        # Check available column names
-        st.write("Available Columns:", stock_data.columns.tolist())
-
-        # Replace 'Adj Close' with the correct column name
-        close_column_name = 'Adj Close'  # Replace with the correct column name
-        if close_column_name in stock_data.columns:
-            weekly_changes = stock_data.groupby(stock_data.index.weekday)[close_column_name].mean()
-            st.bar_chart(weekly_changes)
-        else:
-            st.error(f"Column '{close_column_name}' not found in the dataset.")
-    else:
-        st.warning("Data is not a DataFrame.")
+    st.write(f"Changes in Distribution Over Intervals:")
+    weekly_changes = stock_data[selected_stock_name].groupby(stock_data.index.weekday).mean()
+    st.bar_chart(weekly_changes)
 
 
 # Main Streamlit app
 def main():
     st.title("Stock Grouping, Correlation, and EDA Analysis")
 
-    # Fetch historical stock data for NASDAQ-100 companies
-    stock_data = get_nasdaq_100_data()
+    # Create a dropdown to select the column
+    selected_column = st.selectbox("Select Column", ['Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume'])
+
+    # Fetch historical stock data for NASDAQ-100 companies with the selected column
+    stock_data = get_nasdaq_100_data(selected_column)
 
     # Display data size before clustering1
     st.write("Data Size Before Clustering:", stock_data.shape)
@@ -146,12 +144,15 @@ def main():
 
         # Display the selected stocks for analysis
         st.write("Selected Stocks for Analysis:", selected_stocks_analysis)
+        st.write("Full Selected StockDataFrame:", stock_data)
 
         # Perform EDA for each selected stock
         for selected_stock_name in selected_stocks_analysis:
-            selected_stock_data = stock_data[[selected_stock_name]]  # Ensure the correct data type (DataFrame)
+            selected_stock_data = stock_data[selected_stocks_analysis]  # Filter to include only selected stocks
             if isinstance(selected_stock_data, pd.DataFrame):
-                perform_eda(selected_stock_data, selected_stock_name)
+                perform_eda(selected_stock_data, selected_stock_name, selected_column)
+            else:
+                st.warning(f"Data for {selected_stock_name} is not a DataFrame. Cannot perform EDA.")
 
         # Calculate and present correlation
         top_positive_corr, top_negative_corr = calculate_and_present_correlation(
