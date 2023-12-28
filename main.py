@@ -1,11 +1,13 @@
+import time
+import numpy as np
 import yfinance as yf
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from scipy.stats import zscore
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import streamlit as st
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 # Function to fetch historical stock data for NASDAQ-100 companies
@@ -35,31 +37,92 @@ def get_nasdaq_100_data(selected_column='Adj Close'):
 
     stock_data = yf.download(nasdaq_100_symbols, start="2022-12-01", end="2023-12-01")
 
+    st.write("Downloaded Data:", stock_data)
+    st.write("Column Names:", stock_data.columns)
+
+    # Apply log transformation to the 'Volume' column if it exists in the DataFrame
+    if ('Volume', selected_column) in stock_data.columns:
+        volume_column = ('Volume', selected_column)
+
+        # Identify non-zero values
+        non_zero_mask = stock_data[volume_column] > 0
+
+        # Apply log transformation only to non-zero values
+        stock_data[volume_column] = np.log1p(stock_data[volume_column])
+
+        # Check if there are any non-zero values after log transformation
+        if non_zero_mask.any():
+            stock_data = stock_data[non_zero_mask]  # Filter out rows with zero values after log transformation
+        else:
+            st.warning(f"No non-zero values found in the log-transformed 'Volume' column after removing outliers.")
+            # Handle the case when there are no non-zero values
+
+    # Check if the DataFrame is empty after preprocessing
+    if stock_data.empty:
+        st.warning("Empty DataFrame after preprocessing. Check your data and preprocessing steps.")
+
     # Check if the selected column is in the available columns
     if selected_column in stock_data.columns.get_level_values(0):
+        st.write("DataFrame Info:", stock_data.info())
         return stock_data[selected_column].pct_change().dropna()
     else:
         raise ValueError(
-            f"Invalid column selected: {selected_column}. Available columns are {stock_data.columns.get_level_values(0)}")
+            f"""Invalid column selected: {selected_column}. 
+            Available columns are {stock_data.columns.get_level_values(0)}""")
 
-    #return stock_data['High'].pct_change().dropna()
+    # return stock_data['High'].pct_change().dropna()
 
 
 # Function to perform clustering
-def perform_clustering(data, num_clusters):
+def perform_clustering(data, num_clusters, selected_column):
+    # Check the dataset isn't empty
     if data.shape[0] == 0 or data.shape[1] == 0:
         st.error("Error: Empty dataset before clustering.")
         return []
 
-    # Standardize the data
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(data)
+    st.write("Column Names:", data.columns)
+    st.write("DataFrame Info:", data.info())
+
+    # Forward filling missing values
+    stock_data = data.ffill()
+
+    # Print the length of the dataset before outlier removal
+    st.write(f"Length of {selected_column} in StockDataFrame before removing outliers:", len(stock_data))
+
+    # Check if the DataFrame is empty after preprocessing
+    if stock_data.empty:
+        st.warning("Empty DataFrame after preprocessing. Check your data and preprocessing steps.")
+        return []  # Return an empty list to signal an issue
+
+    # Print the dataset before outlier removal
+    st.write(f"{selected_column} in StockDataFrame before removing outlier:", stock_data)
+    # Removing outliers using z-score
+    z_scores = zscore(stock_data)  # Calculate Z-scores for each data point in the stock_data
+    abs_z_scores = np.abs(z_scores)  # Take the absolute value of Z-scores
+    filtered_entries = (abs_z_scores < 4).all(axis=1)  # Create a boolean mask indicating whether each data point is
+    # within 3 standard deviations
+    stock_data = stock_data[filtered_entries]  # Use the boolean mask to filter out rows with outliers from stock_data
+
+    # Print the length of the dataset after outlier removal
+    st.write(f"Length of {selected_column} in StockDataFrame after removing outliers:", len(stock_data))
+
+    st.write(f"{selected_column} in StockDataFrame after removing outlier:", stock_data)
+
+    # Normalize the data using Min-Max scaling
+    scaler = MinMaxScaler()  # Create the MinMaxScaler object
+    stock_data_normalized = scaler.fit_transform(stock_data)  # Fit and transform the data
+
+    # Standardize the data using Z-Score (not in use as LSTM model will prefer normalization across different horizons)
+    # scaler = StandardScaler()
+    # scaled_data = scaler.fit_transform(data)
 
     # Apply PCA for dimensionality reduction
-    n_components = min(scaled_data.shape[0],
-                       scaled_data.shape[1]) - 1  # Set n_components to the minimum of samples and features
+    n_components = min(stock_data_normalized.shape[0],
+                       stock_data_normalized.shape[1]) - 1  # Set n_components to the minimum of samples and features
     pca = PCA(n_components=n_components)
-    reduced_data = pca.fit_transform(scaled_data)
+    reduced_data = pca.fit_transform(stock_data_normalized)
+
+    st.write("Reduced StockDataFrame:", reduced_data)
 
     # Check if any element in reduced_data is zero
     if (reduced_data == 0).any():
@@ -111,18 +174,27 @@ def perform_eda(stock_data, selected_stock_name, selected_column):
 def main():
     st.title("Stock Grouping, Correlation, and EDA Analysis")
 
+    progress_text = "Operation in progress. Please wait."
+    progress_bar = st.progress(0, text=progress_text)
+
+    for percent_complete in range(100):
+        time.sleep(0.01)
+        progress_bar.progress(percent_complete + 1, text=progress_text)
+    time.sleep(1)
+    progress_bar.empty()
+
     # Create a dropdown to select the column
     selected_column = st.selectbox("Select Column", ['Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume'])
 
     # Fetch historical stock data for NASDAQ-100 companies with the selected column
     stock_data = get_nasdaq_100_data(selected_column)
 
-    # Display data size before clustering1
+    # Display data size before clustering
     st.write("Data Size Before Clustering:", stock_data.shape)
 
     # Perform clustering with k-means (number of clusters = 4)
     num_clusters = 4
-    clusters = perform_clustering(stock_data, num_clusters)
+    clusters = perform_clustering(stock_data, num_clusters, selected_column)
 
     # Check if clusters is not None and not an empty list
     if clusters is not None and len(clusters) > 0:
@@ -167,6 +239,7 @@ def main():
         st.write(top_negative_corr)
     else:
         st.error("Error: Empty dataset after clustering.")
+
 
 if __name__ == '__main__':
     main()
